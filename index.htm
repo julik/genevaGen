@@ -25,7 +25,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
       <span class="name">a</span>
       <span class="desc">drive crank radius</span>
     </label>
-    <input type="number" id="a_input" step="any" style="display:none">
+    <input type="number" id="a_input" step="0.01" style="display:none">
     <span class="value" id="a_display"></span>
   </div>
   <div class="variableDef">
@@ -34,7 +34,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
       <span class="name">b</span>
       <span class="desc">Geneva wheel radius</span>
     </label>
-    <input type="number" id="b_input" value="3" step="any">
+    <input type="number" id="b_input" value="3.0" step="0.01">
     <span class="value" id="b_display" style="display:none"></span>
   </div>
   <div class="variableDef">
@@ -42,21 +42,21 @@ svg { background: #fcfff5; border: 1px solid #999; }
       <span class="name">n</span>
       <span class="desc">number of positions</span>
     </label>
-    <input type="number" id="n_input" value="6" step="1" min="2">
+    <input type="number" id="n_input" value="6" step="1" min="2" max="256">
   </div>
   <div class="variableDef">
     <label>
       <span class="name">p</span>
       <span class="desc">pin diameter</span>
     </label>
-    <input type="number" id="p_input" value="0.25" step="any">
+    <input type="number" id="p_input" value="0.25" step="0.01" min="0.01" max="12.00">
   </div>
   <div class="variableDef">
     <label>
       <span class="name">t</span>
       <span class="desc">allowed clearance</span>
     </label>
-    <input type="number" id="t_input" value="0.05" step="any">
+    <input type="number" id="t_input" value="0.05" step="0.01" min="0.0" max="10.0">
   </div>
 
   <hr>
