@@ -1,119 +1,330 @@
-﻿<!DOCTYPE html>
-
-<html ng-app="app">
+<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="utf-8" />
-    <title>Geneva Drive Generator</title>
-    <link href="genevaDrawingStyles.css" rel="stylesheet" />
+<meta charset="utf-8">
+<title>Geneva Drive Generator</title>
+<style>
+body { font-family: sans-serif; margin: 20px; background: #f5f5f5; display: flex; gap: 24px; }
+.controls { min-width: 280px; }
+.variableDef { margin: 4px 0; display: flex; align-items: center; gap: 6px; }
+.variableDef .name { font-weight: bold; font-family: monospace; width: 1.2em; display: inline-block; }
+.variableDef .desc { color: #666; font-size: 0.9em; }
+.variableDef input[type=number] { width: 70px; }
+.variableDef .value { font-family: monospace; }
+hr { border: none; border-top: 1px solid #ccc; margin: 10px 0; }
+label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+svg { background: #fcfff5; border: 1px solid #999; }
+</style>
 </head>
 <body>
 
-    <div ng-controller="genevaController">
+<div class="controls">
+  <div class="variableDef">
+    <input type="radio" name="primary" value="a" id="ra">
+    <label for="ra">
+      <span class="name">a</span>
+      <span class="desc">drive crank radius</span>
+    </label>
+    <input type="number" id="a_input" step="any" style="display:none">
+    <span class="value" id="a_display"></span>
+  </div>
+  <div class="variableDef">
+    <input type="radio" name="primary" value="b" id="rb" checked>
+    <label for="rb">
+      <span class="name">b</span>
+      <span class="desc">Geneva wheel radius</span>
+    </label>
+    <input type="number" id="b_input" value="3" step="any">
+    <span class="value" id="b_display" style="display:none"></span>
+  </div>
+  <div class="variableDef">
+    <label>
+      <span class="name">n</span>
+      <span class="desc">number of positions</span>
+    </label>
+    <input type="number" id="n_input" value="6" step="1" min="2">
+  </div>
+  <div class="variableDef">
+    <label>
+      <span class="name">p</span>
+      <span class="desc">pin diameter</span>
+    </label>
+    <input type="number" id="p_input" value="0.25" step="any">
+  </div>
+  <div class="variableDef">
+    <label>
+      <span class="name">t</span>
+      <span class="desc">allowed clearance</span>
+    </label>
+    <input type="number" id="t_input" value="0.05" step="any">
+  </div>
 
-        <div class="variableDef">
-            <input type="radio" ng-model="primaryCalculationRadius" value="a">
-            <label>
-                <span class="name">a</span>
-                <span class="desc">drive crank radius</span>
-                <input type="number" ng-model="a_input" ng-show="primaryCalculationRadius=='a'" />
-                <span ng-show="primaryCalculationRadius=='b'">{{drawingParams.a | number:4}}</span>
-            </label>
-        </div>
-        <div class="variableDef">
-            <input type="radio" ng-model="primaryCalculationRadius" value="b">
-            <label>
-                <span class="name">b</span>
-                <span class="desc">Geneva wheel radius</span>
-                <input type="number" ng-model="b_input" ng-show="primaryCalculationRadius=='b'" />
-                <span ng-show="primaryCalculationRadius=='a'">{{drawingParams.b | number:4}}</span>
-            </label>
-        </div>
-        <div class="variableDef">
-            <label>
-                <span class="name">n</span>
-                <span class="desc">number of positions</span>
-                <input type="number" ng-model="n" />
-            </label>
-        </div>
-        <div class="variableDef">
-            <label>
-                <span class="name">p</span>
-                <span class="desc">pin diameter</span>
-                <input type="number" ng-model="p" />
-            </label>
-        </div>
-        <div class="variableDef">
-            <label>
-                <span class="name">t</span>
-                <span class="desc">allowed clearance</span>
-                <input type="number" ng-model="t" />
-            </label>
-        </div>
+  <hr>
 
-        <hr />
+  <div class="variableDef"><span class="name">c</span><span class="desc">center distance</span><span class="value" id="c_val"></span></div>
+  <div class="variableDef"><span class="name">s</span><span class="desc">slot center length</span><span class="value" id="s_val"></span></div>
+  <div class="variableDef"><span class="name">w</span><span class="desc">slot width</span><span class="value" id="w_val"></span></div>
+  <div class="variableDef"><span class="name">y</span><span class="desc">stop arc radius</span><span class="value" id="y_val"></span></div>
+  <div class="variableDef"><span class="name">z</span><span class="desc">stop disc radius</span><span class="value" id="z_val"></span></div>
+  <div class="variableDef"><span class="name">v</span><span class="desc">clearance arc</span><span class="value" id="v_val"></span></div>
 
-        <div class="variableDef">
-            <span class="name">c</span>
-            <span class="desc">center distance</span>
-            <span class="value">{{drawingParams.c | number:4}}</span>
-        </div>
-        <div class="variableDef">
-            <span class="name">s</span>
-            <span class="desc">slot center length</span>
-            <span class="value">{{drawingParams.s | number:4}}</span>
-        </div>
-        <div class="variableDef">
-            <span class="name">w</span>
-            <span class="desc">slot width</span>
-            <span class="value">{{drawingParams.w | number:4}}</span>
-        </div>
-        <div class="variableDef">
-            <span class="name">y</span>
-            <span class="desc">stop arc radius</span>
-            <span class="value">{{drawingParams.y | number:4}}</span>
-        </div>
-        <div class="variableDef">
-            <span class="name">z</span>
-            <span class="desc">stop disc radius</span>
-            <span class="value">{{drawingParams.z | number:4}}</span>
-        </div>
-        <div class="variableDef">
-            <span class="name">v</span>
-            <span class="desc">clearance arc</span>
-            <span class="value">{{drawingParams.v | number:4}}</span>
-        </div>
+  <hr>
 
-        <div>
-            <label>
-                <input type="checkbox" ng-model="animation.enabled" />
-                Animate
-            </label>
-        </div>
+  <label><input type="checkbox" id="animateCheck"> Animate</label>
+  <label><input type="checkbox" id="dimsCheck"> Show Dimensions</label>
+</div>
 
-        <div>
-            <label>
-                <input type="checkbox" ng-model="dimensions.display" />
-                Show Dimensions
-            </label>
-        </div>
+<svg id="genevaDrive" width="500" height="350"></svg>
 
-        <geneva-drawing params="drawingParams" animation="animation" dimensions="dimensions" />
+<script>
+(function() {
+  var PI = Math.PI;
+  var fmt = function(v) { return v.toFixed(4); };
+  var dist = function(x1,y1,x2,y2) { return Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1)); };
 
-    </div>
+  // DOM refs
+  var primaryRadios = document.querySelectorAll('input[name=primary]');
+  var aInput = document.getElementById('a_input');
+  var bInput = document.getElementById('b_input');
+  var aDisplay = document.getElementById('a_display');
+  var bDisplay = document.getElementById('b_display');
+  var nInput = document.getElementById('n_input');
+  var pInput = document.getElementById('p_input');
+  var tInput = document.getElementById('t_input');
+  var animateCheck = document.getElementById('animateCheck');
+  var dimsCheck = document.getElementById('dimsCheck');
+  var svg = document.getElementById('genevaDrive');
 
+  var spinAngle = 0;
+  var animFrame = null;
+  var lastTime = 0;
 
-    
+  function getPrimary() {
+    return document.querySelector('input[name=primary]:checked').value;
+  }
 
+  function calc() {
+    var primary = getPrimary();
+    var n = parseFloat(nInput.value) || 6;
+    var p = parseFloat(pInput.value) || 0.25;
+    var t = parseFloat(tInput.value) || 0.05;
+    var a, b, c;
 
+    if (primary === 'b') {
+      b = parseFloat(bInput.value) || 3;
+      c = b / Math.cos(PI / n);
+      a = Math.sqrt(c * c - b * b);
+    } else {
+      a = parseFloat(aInput.value) || 1;
+      c = a / Math.sin(PI / n);
+      b = Math.sqrt(c * c - a * a);
+    }
 
-    
-    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.0-rc.3/angular.min.js"></script>
-    <script type="text/javascript" src="app.js"></script>
-    <script type="text/javascript" src="genevaController.js"></script>
-    <script type="text/javascript" src="genevaDrawing.js"></script>
-    <script type="text/javascript" src="genevaDrawingController.js"></script>
-    <script type="text/javascript" src="svgBindViewbox.js"></script>
-    <script type="text/javascript" src="drawingDimension.js"></script>
+    var s = (a + b) - c;
+    var w = p + t;
+    var y = a - 1.5 * p;
+    var z = y - t;
+    var v = (b * z) / a;
+
+    return { a:a, b:b, c:c, n:n, p:p, t:t, s:s, w:w, y:y, z:z, v:v };
+  }
+
+  function updateInputVisibility() {
+    var primary = getPrimary();
+    aInput.style.display = primary === 'a' ? '' : 'none';
+    aDisplay.style.display = primary === 'a' ? 'none' : '';
+    bInput.style.display = primary === 'b' ? '' : 'none';
+    bDisplay.style.display = primary === 'b' ? 'none' : '';
+  }
+
+  function updateDisplayValues(P) {
+    aDisplay.textContent = fmt(P.a);
+    bDisplay.textContent = fmt(P.b);
+    document.getElementById('c_val').textContent = fmt(P.c);
+    document.getElementById('s_val').textContent = fmt(P.s);
+    document.getElementById('w_val').textContent = fmt(P.w);
+    document.getElementById('y_val').textContent = fmt(P.y);
+    document.getElementById('z_val').textContent = fmt(P.z);
+    document.getElementById('v_val').textContent = fmt(P.v);
+  }
+
+  // SVG helpers
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  function render() {
+    var P = calc();
+    updateDisplayValues(P);
+
+    // Clear SVG
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    var driveX = P.c, driveY = 0;
+    var wheelX = 0, wheelY = 0;
+    var driveRadius = P.a + P.p;
+    var pinRadius = P.p / 2;
+
+    // viewBox
+    var minx = wheelX - 1.1 * P.b;
+    var miny = wheelY - 1.1 * Math.max(P.a, P.b);
+    var vw = P.c + 1.1 * (P.a + P.p) + 1.1 * P.b;
+    var vh = Math.max(P.a, P.b) * 2 * 1.1;
+    svg.setAttribute('viewBox', minx + ' ' + miny + ' ' + vw + ' ' + vh);
+
+    // Pin position
+    var pinStartRad = PI - Math.atan(P.b / P.a);
+    var pinStartDeg = pinStartRad * 180 / PI * -1;
+    var pinRad = (pinStartDeg + spinAngle) * PI / 180;
+    var pinX = driveX + P.a * Math.cos(pinRad);
+    var pinY = driveY + P.a * Math.sin(pinRad);
+
+    // Wheel rotation
+    var pinDist = dist(wheelX, wheelY, pinX, pinY);
+    var wheelRot;
+    if (pinDist <= P.b) {
+      wheelRot = Math.atan2(pinY - wheelY, pinX - wheelX) * 180 / PI;
+    } else {
+      wheelRot = (360 / P.n) / 2;
+    }
+
+    // --- Defs ---
+    var defs = el('defs', {}, svg);
+
+    // Wheel mask
+    var wheelMask = el('mask', {id: 'wm'}, defs);
+    el('circle', {cx: wheelX, cy: wheelY, r: P.b, fill: 'white'}, wheelMask);
+    for (var i = 0; i < P.n; i++) {
+      var deg = i * (360 / P.n);
+      var g = el('g', {transform: 'rotate(' + deg + ' ' + wheelX + ' ' + wheelY + ')'}, wheelMask);
+      el('rect', {
+        x: wheelX + P.b - P.s - P.w/2,
+        y: wheelY - P.w/2,
+        width: P.s + 2 * P.w,
+        height: P.w,
+        rx: P.w/2, ry: P.w/2,
+        fill: 'black'
+      }, g);
+      el('circle', {
+        cx: wheelX + P.c, cy: wheelY, r: P.y,
+        transform: 'rotate(' + (180/P.n) + ' ' + wheelX + ' ' + wheelY + ')',
+        fill: 'black'
+      }, g);
+    }
+
+    // Stop disc mask
+    var sdMask = el('mask', {id: 'sdm'}, defs);
+    el('circle', {cx: driveX, cy: driveY, r: P.z, fill: 'white'}, sdMask);
+    el('circle', {cx: driveX - P.z, cy: driveY - P.v, r: P.v, fill: 'black'}, sdMask);
+
+    // --- Drive assembly (rotates) ---
+    var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + driveX + ' ' + driveY + ')'}, svg);
+    el('circle', {cx: driveX, cy: driveY, r: driveRadius, fill: '#193441'}, driveG);
+    el('circle', {cx: driveX, cy: driveY, r: P.z, mask: 'url(#sdm)', fill: '#3e606f'}, driveG);
+    el('circle', {
+      cx: driveX + P.a, cy: driveY, r: pinRadius, fill: '#3e606f',
+      transform: 'rotate(' + pinStartDeg + ' ' + driveX + ' ' + driveY + ')'
+    }, driveG);
+
+    // --- Wheel (rotates) ---
+    var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + wheelX + ' ' + wheelY + ')'}, svg);
+    el('circle', {cx: wheelX, cy: wheelY, r: P.b, mask: 'url(#wm)', fill: '#91aa9d'}, wheelG);
+
+    // --- Dimensions ---
+    if (dimsCheck.checked) {
+      var dimG = el('g', {}, svg);
+      el('rect', {x: -100*P.b, y: -100*P.b, width: 200*P.b, height: 200*P.b, fill: 'white', 'fill-opacity': 0.4}, dimG);
+
+      // ABC triangle points
+      var p1 = {x: wheelX, y: wheelY};
+      var p2 = {x: driveX, y: driveY};
+      var p3 = {
+        x: wheelX + P.b * Math.cos(PI / P.n),
+        y: wheelY - P.b * Math.sin(PI / P.n)
+      };
+
+      // VZ triangle
+      var vz1 = {x: driveX, y: driveY};
+      var vz2 = {x: driveX - P.z, y: driveY};
+      var vz3 = {x: driveX - P.z, y: driveY - P.v};
+
+      var sw = pinRadius / 2;
+      el('path', {
+        d: 'M ' + vz1.x + ' ' + vz1.y + ' L ' + vz2.x + ' ' + vz2.y + ' L ' + vz3.x + ' ' + vz3.y + ' Z',
+        fill: 'none', stroke: 'gray', 'stroke-width': sw
+      }, dimG);
+      el('path', {
+        d: 'M ' + p1.x + ' ' + p1.y + ' L ' + p2.x + ' ' + p2.y + ' L ' + p3.x + ' ' + p3.y + ' Z',
+        fill: 'none', stroke: 'white', 'stroke-width': sw
+      }, dimG);
+
+      drawDimension(dimG, p1, p2, 'c', P.b, pinRadius);
+      drawDimension(dimG, p2, p3, 'a', driveRadius, pinRadius);
+      drawDimension(dimG, p3, p1, 'b', P.b / 2, pinRadius);
+    }
+  }
+
+  function drawDimension(parent, from, to, text, leader, pinR) {
+    var d = dist(from.x, from.y, to.x, to.y);
+    var angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / PI;
+    var lw = pinR / 4;
+    var fs = pinR * 1.5;
+
+    var g = el('g', {transform: 'translate(' + from.x + ',' + from.y + ') rotate(' + angle + ')'}, parent);
+    el('line', {x1:0, y1:0, x2:0, y2: leader*1.02, stroke:'black', 'stroke-width': lw}, g);
+    el('line', {x1:d, y1:0, x2:d, y2: leader*1.02, stroke:'black', 'stroke-width': lw}, g);
+    el('line', {x1:0, y1:leader, x2:d, y2:leader, stroke:'black', 'stroke-width': lw}, g);
+
+    var t = el('text', {
+      x: d/2, y: leader,
+      transform: 'rotate(' + (-angle) + ' ' + (d/2) + ' ' + leader + ')',
+      'font-family': 'Verdana', 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      'font-size': fs, fill: 'black'
+    }, g);
+    t.textContent = text;
+  }
+
+  // Event wiring
+  function onInputChange() { render(); }
+  [nInput, pInput, tInput, aInput, bInput].forEach(function(el) {
+    el.addEventListener('input', onInputChange);
+  });
+  primaryRadios.forEach(function(r) {
+    r.addEventListener('change', function() {
+      updateInputVisibility();
+      render();
+    });
+  });
+  dimsCheck.addEventListener('change', render);
+
+  // Animation
+  animateCheck.addEventListener('change', function() {
+    if (animateCheck.checked) {
+      lastTime = performance.now();
+      animFrame = requestAnimationFrame(animate);
+    } else if (animFrame) {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
+  });
+
+  function animate(now) {
+    var dt = now - lastTime;
+    lastTime = now;
+    spinAngle = (spinAngle + dt * 0.05) % 360;
+    render();
+    animFrame = requestAnimationFrame(animate);
+  }
+
+  // Initial render
+  updateInputVisibility();
+  render();
+})();
+</script>
 
 </body>
 </html>
