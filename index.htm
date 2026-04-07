@@ -72,6 +72,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   <label><input type="checkbox" id="animateCheck"> Animate</label>
   <label><input type="checkbox" id="dimsCheck"> Show Dimensions</label>
+  <br>
+  <button id="downloadBtn">Download SVG</button>
 </div>
 
 <svg id="genevaDrive" width="500" height="350"></svg>
@@ -192,47 +194,37 @@ svg { background: #fcfff5; border: 1px solid #999; }
       wheelRot = (360 / P.n) / 2;
     }
 
-    // --- Defs ---
+    // Clip paths (circles are rotation-invariant around their centers)
     var defs = el('defs', {}, svg);
-
-    // Wheel mask
-    var wheelMask = el('mask', {id: 'wm'}, defs);
-    el('circle', {cx: wheelX, cy: wheelY, r: P.b, fill: 'white'}, wheelMask);
-    for (var i = 0; i < P.n; i++) {
-      var deg = i * (360 / P.n);
-      var g = el('g', {transform: 'rotate(' + deg + ' ' + wheelX + ' ' + wheelY + ')'}, wheelMask);
-      el('rect', {
-        x: wheelX + P.b - P.s - P.w/2,
-        y: wheelY - P.w/2,
-        width: P.s + 2 * P.w,
-        height: P.w,
-        rx: P.w/2, ry: P.w/2,
-        fill: 'black'
-      }, g);
-      el('circle', {
-        cx: wheelX + P.c, cy: wheelY, r: P.y,
-        transform: 'rotate(' + (180/P.n) + ' ' + wheelX + ' ' + wheelY + ')',
-        fill: 'black'
-      }, g);
-    }
-
-    // Stop disc mask
-    var sdMask = el('mask', {id: 'sdm'}, defs);
-    el('circle', {cx: driveX, cy: driveY, r: P.z, fill: 'white'}, sdMask);
-    el('circle', {cx: driveX - P.z, cy: driveY - P.v, r: P.v, fill: 'black'}, sdMask);
+    var sdClip = el('clipPath', {id: 'sdc'}, defs);
+    el('circle', {cx: driveX, cy: driveY, r: P.z}, sdClip);
+    var wClip = el('clipPath', {id: 'wc'}, defs);
+    el('circle', {cx: wheelX, cy: wheelY, r: P.b}, wClip);
 
     // --- Drive assembly (rotates) ---
     var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + driveX + ' ' + driveY + ')'}, svg);
     el('circle', {cx: driveX, cy: driveY, r: driveRadius, fill: '#193441'}, driveG);
-    el('circle', {cx: driveX, cy: driveY, r: P.z, mask: 'url(#sdm)', fill: '#3e606f'}, driveG);
+
+    // Stop disc compound path
+    var sdd = circlePath(driveX, driveY, P.z);
+    sdd += circlePath(driveX - P.z, driveY - P.v, P.v);
+    el('path', {d: sdd, 'fill-rule': 'evenodd', fill: '#3e606f', 'clip-path': 'url(#sdc)'}, driveG);
+
     el('circle', {
       cx: driveX + P.a, cy: driveY, r: pinRadius, fill: '#3e606f',
       transform: 'rotate(' + pinStartDeg + ' ' + driveX + ' ' + driveY + ')'
     }, driveG);
 
-    // --- Wheel (rotates) ---
+    // --- Wheel compound path (rotates) ---
     var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + wheelX + ' ' + wheelY + ')'}, svg);
-    el('circle', {cx: wheelX, cy: wheelY, r: P.b, mask: 'url(#wm)', fill: '#91aa9d'}, wheelG);
+    var wd = circlePath(wheelX, wheelY, P.b);
+    for (var i = 0; i < P.n; i++) {
+      var deg = i * (360 / P.n);
+      wd += pillPath(wheelX + P.b - P.s - P.w/2, wheelY - P.w/2, P.s + 2*P.w, P.w, deg, wheelX, wheelY);
+      var cc = rotPt(wheelX + P.c, wheelY, wheelX, wheelY, deg + 180/P.n);
+      wd += circlePath(cc.x, cc.y, P.y);
+    }
+    el('path', {d: wd, 'fill-rule': 'evenodd', fill: '#91aa9d', 'clip-path': 'url(#wc)'}, wheelG);
 
     // --- Dimensions ---
     if (dimsCheck.checked) {
@@ -319,6 +311,99 @@ svg { background: #fcfff5; border: 1px solid #999; }
     render();
     animFrame = requestAnimationFrame(animate);
   }
+
+  // Rotate point (x,y) around (cx,cy) by deg degrees
+  function rotPt(x, y, cx, cy, deg) {
+    var r = deg * PI / 180;
+    var dx = x - cx, dy = y - cy;
+    return { x: cx + dx*Math.cos(r) - dy*Math.sin(r), y: cy + dx*Math.sin(r) + dy*Math.cos(r) };
+  }
+
+  // Circle sub-path (two arcs)
+  function circlePath(cx, cy, r) {
+    return 'M'+(cx-r)+' '+cy+'A'+r+' '+r+' 0 1 0 '+(cx+r)+' '+cy+'A'+r+' '+r+' 0 1 0 '+(cx-r)+' '+cy+'Z';
+  }
+
+  // Pill/stadium sub-path: rounded rect (rx=ry=h/2) rotated by deg around (pivX,pivY)
+  function pillPath(x, y, w, h, deg, pivX, pivY) {
+    var hw = h / 2;
+    var lx = x + hw, rx2 = x + w - hw;
+    var p1 = rotPt(lx, y, pivX, pivY, deg);
+    var p2 = rotPt(rx2, y, pivX, pivY, deg);
+    var p3 = rotPt(rx2, y + h, pivX, pivY, deg);
+    var p4 = rotPt(lx, y + h, pivX, pivY, deg);
+    return 'M'+p1.x+' '+p1.y+'L'+p2.x+' '+p2.y+
+      'A'+hw+' '+hw+' 0 0 1 '+p3.x+' '+p3.y+
+      'L'+p4.x+' '+p4.y+
+      'A'+hw+' '+hw+' 0 0 1 '+p1.x+' '+p1.y+'Z';
+  }
+
+  // Build a standalone SVG with all transforms baked into coordinates
+  function buildExportSVG() {
+    var P = calc();
+    var driveX = P.c, driveY = 0, wheelX = 0, wheelY = 0;
+    var driveRadius = P.a + P.p, pinRadius = P.p / 2;
+
+    var minx = wheelX - 1.1 * P.b;
+    var miny = wheelY - 1.1 * Math.max(P.a, P.b);
+    var vw = P.c + 1.1 * (P.a + P.p) + 1.1 * P.b;
+    var vh = Math.max(P.a, P.b) * 2 * 1.1;
+
+    var pinStartDeg = (PI - Math.atan(P.b / P.a)) * 180 / PI * -1;
+    var pinRad = (pinStartDeg + spinAngle) * PI / 180;
+    var pinX = driveX + P.a * Math.cos(pinRad);
+    var pinY = driveY + P.a * Math.sin(pinRad);
+    var pinDist2 = dist(wheelX, wheelY, pinX, pinY);
+    var wheelRot = pinDist2 <= P.b
+      ? Math.atan2(pinY - wheelY, pinX - wheelX) * 180 / PI
+      : (360 / P.n) / 2;
+
+    var o = '';
+    o += '<?xml version="1.0" encoding="UTF-8"?>\n';
+    o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
+    o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
+    o += '<defs>\n';
+    o += '<clipPath id="sdc"><circle cx="'+driveX+'" cy="'+driveY+'" r="'+P.z+'"/></clipPath>\n';
+    o += '<clipPath id="wc"><circle cx="'+wheelX+'" cy="'+wheelY+'" r="'+P.b+'"/></clipPath>\n';
+    o += '</defs>\n';
+
+    // Drive base
+    o += '<circle cx="'+driveX+'" cy="'+driveY+'" r="'+driveRadius+'" fill="#193441"/>\n';
+
+    // Stop disc compound path — bake spinAngle into clearance circle
+    var cp = rotPt(driveX - P.z, driveY - P.v, driveX, driveY, spinAngle);
+    var sdd = circlePath(driveX, driveY, P.z) + circlePath(cp.x, cp.y, P.v);
+    o += '<path d="'+sdd+'" fill-rule="evenodd" fill="#3e606f" clip-path="url(#sdc)"/>\n';
+
+    // Pin — baked position
+    var pp = rotPt(driveX + P.a, driveY, driveX, driveY, pinStartDeg + spinAngle);
+    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+pinRadius+'" fill="#3e606f"/>\n';
+
+    // Wheel compound path — bake wheelRot into all sub-paths
+    var wd = circlePath(wheelX, wheelY, P.b);
+    for (var i = 0; i < P.n; i++) {
+      var slotDeg = i * (360 / P.n) + wheelRot;
+      wd += pillPath(wheelX + P.b - P.s - P.w/2, wheelY - P.w/2, P.s + 2*P.w, P.w, slotDeg, wheelX, wheelY);
+      var cc = rotPt(wheelX + P.c, wheelY, wheelX, wheelY, slotDeg + 180/P.n);
+      wd += circlePath(cc.x, cc.y, P.y);
+    }
+    o += '<path d="'+wd+'" fill-rule="evenodd" fill="#91aa9d" clip-path="url(#wc)"/>\n';
+
+    o += '</svg>';
+    return o;
+  }
+
+  // Download SVG
+  document.getElementById('downloadBtn').addEventListener('click', function() {
+    var source = buildExportSVG();
+    var blob = new Blob([source], {type: 'image/svg+xml'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'geneva-drive.svg';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 
   // Initial render
   updateInputVisibility();
