@@ -78,11 +78,15 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
 <svg id="genevaDrive" width="500" height="350"></svg>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.18/paper-core.min.js"></script>
 <script>
 (function() {
   var PI = Math.PI;
   var fmt = function(v) { return v.toFixed(4); };
   var dist = function(x1,y1,x2,y2) { return Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1)); };
+
+  // Paper.js headless — used only for shape generation
+  paper.setup(document.createElement('canvas'));
 
   // DOM refs
   var primaryRadios = document.querySelectorAll('input[name=primary]');
@@ -100,6 +104,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
   var spinAngle = 0;
   var animFrame = null;
   var lastTime = 0;
+  var cachedShapes = null;
 
   function getPrimary() {
     return document.querySelector('input[name=primary]:checked').value;
@@ -150,7 +155,62 @@ svg { background: #fcfff5; border: 1px solid #999; }
     document.getElementById('v_val').textContent = fmt(P.v);
   }
 
-  // SVG helpers
+  // ---- Shape generator (uses Paper.js) ----
+
+  function generateShapes(P) {
+    var Pt = paper.Point;
+    var wheelX = 0, wheelY = 0;
+    var driveX = P.c, driveY = 0;
+
+    // Wheel: outer circle minus N slots minus N cutout circles
+    var wheel = new paper.Path.Circle(new Pt(wheelX, wheelY), P.b);
+    for (var i = 0; i < P.n; i++) {
+      var deg = i * (360 / P.n);
+
+      // Slot (rounded rect at 0 deg, then rotated)
+      var slot = new paper.Path.Rectangle({
+        point: new Pt(wheelX + P.b - P.s - P.w/2, wheelY - P.w/2),
+        size: new paper.Size(P.s + 2 * P.w, P.w),
+        radius: P.w / 2
+      });
+      slot.rotate(deg, new Pt(wheelX, wheelY));
+      var next = wheel.subtract(slot);
+      wheel.remove(); slot.remove();
+      wheel = next;
+
+      // Stop-disc cutout circle
+      var cutRad = (deg + 180 / P.n) * PI / 180;
+      var cx = wheelX + P.c * Math.cos(cutRad);
+      var cy = wheelY + P.c * Math.sin(cutRad);
+      var cutout = new paper.Path.Circle(new Pt(cx, cy), P.y);
+      next = wheel.subtract(cutout);
+      wheel.remove(); cutout.remove();
+      wheel = next;
+    }
+
+    // Stop disc: outer circle minus clearance hole
+    var disc = new paper.Path.Circle(new Pt(driveX, driveY), P.z);
+    var clearance = new paper.Path.Circle(new Pt(driveX - P.z, driveY - P.v), P.v);
+    var discResult = disc.subtract(clearance);
+    disc.remove(); clearance.remove();
+
+    var result = {
+      wheelPath: wheel.pathData,
+      discPath: discResult.pathData,
+      driveX: driveX, driveY: driveY,
+      wheelX: wheelX, wheelY: wheelY,
+      driveRadius: P.a + P.p,
+      pinRadius: P.p / 2,
+      pinStartDeg: (PI - Math.atan(P.b / P.a)) * 180 / PI * -1
+    };
+
+    wheel.remove();
+    discResult.remove();
+    return result;
+  }
+
+  // ---- Renderer (no Paper.js dependency) ----
+
   var NS = 'http://www.w3.org/2000/svg';
   function el(tag, attrs, parent) {
     var e = document.createElementNS(NS, tag);
@@ -159,92 +219,65 @@ svg { background: #fcfff5; border: 1px solid #999; }
     return e;
   }
 
+  function rotPt(x, y, cx, cy, deg) {
+    var r = deg * PI / 180;
+    var dx = x - cx, dy = y - cy;
+    return { x: cx + dx*Math.cos(r) - dy*Math.sin(r), y: cy + dx*Math.sin(r) + dy*Math.cos(r) };
+  }
+
   function render() {
     var P = calc();
     updateDisplayValues(P);
+    if (!cachedShapes) cachedShapes = generateShapes(P);
+    var S = cachedShapes;
 
-    // Clear SVG
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    var driveX = P.c, driveY = 0;
-    var wheelX = 0, wheelY = 0;
-    var driveRadius = P.a + P.p;
-    var pinRadius = P.p / 2;
-
     // viewBox
-    var minx = wheelX - 1.1 * P.b;
-    var miny = wheelY - 1.1 * Math.max(P.a, P.b);
-    var vw = P.c + 1.1 * (P.a + P.p) + 1.1 * P.b;
+    var minx = S.wheelX - 1.1 * P.b;
+    var miny = S.wheelY - 1.1 * Math.max(P.a, P.b);
+    var vw = P.c + 1.1 * S.driveRadius + 1.1 * P.b;
     var vh = Math.max(P.a, P.b) * 2 * 1.1;
     svg.setAttribute('viewBox', minx + ' ' + miny + ' ' + vw + ' ' + vh);
 
-    // Pin position
-    var pinStartRad = PI - Math.atan(P.b / P.a);
-    var pinStartDeg = pinStartRad * 180 / PI * -1;
-    var pinRad = (pinStartDeg + spinAngle) * PI / 180;
-    var pinX = driveX + P.a * Math.cos(pinRad);
-    var pinY = driveY + P.a * Math.sin(pinRad);
+    // Pin position for wheel rotation tracking
+    var pinRad = (S.pinStartDeg + spinAngle) * PI / 180;
+    var pinX = S.driveX + P.a * Math.cos(pinRad);
+    var pinY = S.driveY + P.a * Math.sin(pinRad);
+    var pinDist2 = dist(S.wheelX, S.wheelY, pinX, pinY);
+    var wheelRot = pinDist2 <= P.b
+      ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
+      : (360 / P.n) / 2;
 
-    // Wheel rotation
-    var pinDist = dist(wheelX, wheelY, pinX, pinY);
-    var wheelRot;
-    if (pinDist <= P.b) {
-      wheelRot = Math.atan2(pinY - wheelY, pinX - wheelX) * 180 / PI;
-    } else {
-      wheelRot = (360 / P.n) / 2;
-    }
-
-    // Clip paths (circles are rotation-invariant around their centers)
-    var defs = el('defs', {}, svg);
-    var sdClip = el('clipPath', {id: 'sdc'}, defs);
-    el('circle', {cx: driveX, cy: driveY, r: P.z}, sdClip);
-    var wClip = el('clipPath', {id: 'wc'}, defs);
-    el('circle', {cx: wheelX, cy: wheelY, r: P.b}, wClip);
-
-    // --- Drive assembly (rotates) ---
-    var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + driveX + ' ' + driveY + ')'}, svg);
-    el('circle', {cx: driveX, cy: driveY, r: driveRadius, fill: '#193441'}, driveG);
-
-    // Stop disc compound path
-    var sdd = circlePath(driveX, driveY, P.z);
-    sdd += circlePath(driveX - P.z, driveY - P.v, P.v);
-    el('path', {d: sdd, 'fill-rule': 'evenodd', fill: '#3e606f', 'clip-path': 'url(#sdc)'}, driveG);
-
+    // Drive assembly (rotated group)
+    var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')'}, svg);
+    el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, fill: '#193441'}, driveG);
+    el('path', {d: S.discPath, fill: '#3e606f'}, driveG);
     el('circle', {
-      cx: driveX + P.a, cy: driveY, r: pinRadius, fill: '#3e606f',
-      transform: 'rotate(' + pinStartDeg + ' ' + driveX + ' ' + driveY + ')'
+      cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, fill: '#3e606f',
+      transform: 'rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')'
     }, driveG);
 
-    // --- Wheel compound path (rotates) ---
-    var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + wheelX + ' ' + wheelY + ')'}, svg);
-    var wd = circlePath(wheelX, wheelY, P.b);
-    for (var i = 0; i < P.n; i++) {
-      var deg = i * (360 / P.n);
-      wd += pillPath(wheelX + P.b - P.s - P.w/2, wheelY - P.w/2, P.s + 2*P.w, P.w, deg, wheelX, wheelY);
-      var cc = rotPt(wheelX + P.c, wheelY, wheelX, wheelY, deg + 180/P.n);
-      wd += circlePath(cc.x, cc.y, P.y);
-    }
-    el('path', {d: wd, 'fill-rule': 'evenodd', fill: '#91aa9d', 'clip-path': 'url(#wc)'}, wheelG);
+    // Wheel (rotated group)
+    var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')'}, svg);
+    el('path', {d: S.wheelPath, fill: '#91aa9d'}, wheelG);
 
-    // --- Dimensions ---
+    // Dimensions
     if (dimsCheck.checked) {
       var dimG = el('g', {}, svg);
       el('rect', {x: -100*P.b, y: -100*P.b, width: 200*P.b, height: 200*P.b, fill: 'white', 'fill-opacity': 0.4}, dimG);
 
-      // ABC triangle points
-      var p1 = {x: wheelX, y: wheelY};
-      var p2 = {x: driveX, y: driveY};
+      var p1 = {x: S.wheelX, y: S.wheelY};
+      var p2 = {x: S.driveX, y: S.driveY};
       var p3 = {
-        x: wheelX + P.b * Math.cos(PI / P.n),
-        y: wheelY - P.b * Math.sin(PI / P.n)
+        x: S.wheelX + P.b * Math.cos(PI / P.n),
+        y: S.wheelY - P.b * Math.sin(PI / P.n)
       };
+      var vz1 = {x: S.driveX, y: S.driveY};
+      var vz2 = {x: S.driveX - P.z, y: S.driveY};
+      var vz3 = {x: S.driveX - P.z, y: S.driveY - P.v};
+      var sw = S.pinRadius / 2;
 
-      // VZ triangle
-      var vz1 = {x: driveX, y: driveY};
-      var vz2 = {x: driveX - P.z, y: driveY};
-      var vz3 = {x: driveX - P.z, y: driveY - P.v};
-
-      var sw = pinRadius / 2;
       el('path', {
         d: 'M ' + vz1.x + ' ' + vz1.y + ' L ' + vz2.x + ' ' + vz2.y + ' L ' + vz3.x + ' ' + vz3.y + ' Z',
         fill: 'none', stroke: 'gray', 'stroke-width': sw
@@ -254,9 +287,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
         fill: 'none', stroke: 'white', 'stroke-width': sw
       }, dimG);
 
-      drawDimension(dimG, p1, p2, 'c', P.b, pinRadius);
-      drawDimension(dimG, p2, p3, 'a', driveRadius, pinRadius);
-      drawDimension(dimG, p3, p1, 'b', P.b / 2, pinRadius);
+      drawDimension(dimG, p1, p2, 'c', P.b, S.pinRadius);
+      drawDimension(dimG, p2, p3, 'a', S.driveRadius, S.pinRadius);
+      drawDimension(dimG, p3, p1, 'b', P.b / 2, S.pinRadius);
     }
   }
 
@@ -280,20 +313,70 @@ svg { background: #fcfff5; border: 1px solid #999; }
     t.textContent = text;
   }
 
-  // Event wiring
-  function onInputChange() { render(); }
+  // ---- Export (uses Paper.js to bake transforms into path coords) ----
+
+  function buildExportSVG() {
+    var P = calc();
+    if (!cachedShapes) cachedShapes = generateShapes(P);
+    var S = cachedShapes;
+
+    var minx = S.wheelX - 1.1 * P.b;
+    var miny = S.wheelY - 1.1 * Math.max(P.a, P.b);
+    var vw = P.c + 1.1 * S.driveRadius + 1.1 * P.b;
+    var vh = Math.max(P.a, P.b) * 2 * 1.1;
+
+    var pinRad = (S.pinStartDeg + spinAngle) * PI / 180;
+    var pinX = S.driveX + P.a * Math.cos(pinRad);
+    var pinY = S.driveY + P.a * Math.sin(pinRad);
+    var pinDist2 = dist(S.wheelX, S.wheelY, pinX, pinY);
+    var wheelRot = pinDist2 <= P.b
+      ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
+      : (360 / P.n) / 2;
+
+    // Bake rotations into path data via Paper.js
+    var wheelItem = new paper.CompoundPath(S.wheelPath);
+    wheelItem.rotate(wheelRot, new paper.Point(S.wheelX, S.wheelY));
+    var exportWheelPath = wheelItem.pathData;
+    wheelItem.remove();
+
+    var discItem = new paper.CompoundPath(S.discPath);
+    discItem.rotate(spinAngle, new paper.Point(S.driveX, S.driveY));
+    var exportDiscPath = discItem.pathData;
+    discItem.remove();
+
+    var pp = rotPt(S.driveX + P.a, S.driveY, S.driveX, S.driveY, S.pinStartDeg + spinAngle);
+
+    var o = '';
+    o += '<?xml version="1.0" encoding="UTF-8"?>\n';
+    o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
+    o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
+    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" fill="#193441"/>\n';
+    o += '<path d="'+exportDiscPath+'" fill="#3e606f"/>\n';
+    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" fill="#3e606f"/>\n';
+    o += '<path d="'+exportWheelPath+'" fill="#91aa9d"/>\n';
+    o += '</svg>';
+    return o;
+  }
+
+  // ---- Event wiring ----
+
+  function onInputChange() {
+    cachedShapes = null; // invalidate — will regenerate on next render
+    render();
+  }
+
   [nInput, pInput, tInput, aInput, bInput].forEach(function(el) {
     el.addEventListener('input', onInputChange);
   });
   primaryRadios.forEach(function(r) {
     r.addEventListener('change', function() {
       updateInputVisibility();
-      render();
+      onInputChange();
     });
   });
   dimsCheck.addEventListener('change', render);
 
-  // Animation
+  // Animation — only updates transforms, shapes stay cached
   animateCheck.addEventListener('change', function() {
     if (animateCheck.checked) {
       lastTime = performance.now();
@@ -310,87 +393,6 @@ svg { background: #fcfff5; border: 1px solid #999; }
     spinAngle = (spinAngle + dt * 0.05) % 360;
     render();
     animFrame = requestAnimationFrame(animate);
-  }
-
-  // Rotate point (x,y) around (cx,cy) by deg degrees
-  function rotPt(x, y, cx, cy, deg) {
-    var r = deg * PI / 180;
-    var dx = x - cx, dy = y - cy;
-    return { x: cx + dx*Math.cos(r) - dy*Math.sin(r), y: cy + dx*Math.sin(r) + dy*Math.cos(r) };
-  }
-
-  // Circle sub-path (two arcs)
-  function circlePath(cx, cy, r) {
-    return 'M'+(cx-r)+' '+cy+'A'+r+' '+r+' 0 1 0 '+(cx+r)+' '+cy+'A'+r+' '+r+' 0 1 0 '+(cx-r)+' '+cy+'Z';
-  }
-
-  // Pill/stadium sub-path: rounded rect (rx=ry=h/2) rotated by deg around (pivX,pivY)
-  function pillPath(x, y, w, h, deg, pivX, pivY) {
-    var hw = h / 2;
-    var lx = x + hw, rx2 = x + w - hw;
-    var p1 = rotPt(lx, y, pivX, pivY, deg);
-    var p2 = rotPt(rx2, y, pivX, pivY, deg);
-    var p3 = rotPt(rx2, y + h, pivX, pivY, deg);
-    var p4 = rotPt(lx, y + h, pivX, pivY, deg);
-    return 'M'+p1.x+' '+p1.y+'L'+p2.x+' '+p2.y+
-      'A'+hw+' '+hw+' 0 0 1 '+p3.x+' '+p3.y+
-      'L'+p4.x+' '+p4.y+
-      'A'+hw+' '+hw+' 0 0 1 '+p1.x+' '+p1.y+'Z';
-  }
-
-  // Build a standalone SVG with all transforms baked into coordinates
-  function buildExportSVG() {
-    var P = calc();
-    var driveX = P.c, driveY = 0, wheelX = 0, wheelY = 0;
-    var driveRadius = P.a + P.p, pinRadius = P.p / 2;
-
-    var minx = wheelX - 1.1 * P.b;
-    var miny = wheelY - 1.1 * Math.max(P.a, P.b);
-    var vw = P.c + 1.1 * (P.a + P.p) + 1.1 * P.b;
-    var vh = Math.max(P.a, P.b) * 2 * 1.1;
-
-    var pinStartDeg = (PI - Math.atan(P.b / P.a)) * 180 / PI * -1;
-    var pinRad = (pinStartDeg + spinAngle) * PI / 180;
-    var pinX = driveX + P.a * Math.cos(pinRad);
-    var pinY = driveY + P.a * Math.sin(pinRad);
-    var pinDist2 = dist(wheelX, wheelY, pinX, pinY);
-    var wheelRot = pinDist2 <= P.b
-      ? Math.atan2(pinY - wheelY, pinX - wheelX) * 180 / PI
-      : (360 / P.n) / 2;
-
-    var o = '';
-    o += '<?xml version="1.0" encoding="UTF-8"?>\n';
-    o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
-    o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
-    o += '<defs>\n';
-    o += '<clipPath id="sdc"><circle cx="'+driveX+'" cy="'+driveY+'" r="'+P.z+'"/></clipPath>\n';
-    o += '<clipPath id="wc"><circle cx="'+wheelX+'" cy="'+wheelY+'" r="'+P.b+'"/></clipPath>\n';
-    o += '</defs>\n';
-
-    // Drive base
-    o += '<circle cx="'+driveX+'" cy="'+driveY+'" r="'+driveRadius+'" fill="#193441"/>\n';
-
-    // Stop disc compound path — bake spinAngle into clearance circle
-    var cp = rotPt(driveX - P.z, driveY - P.v, driveX, driveY, spinAngle);
-    var sdd = circlePath(driveX, driveY, P.z) + circlePath(cp.x, cp.y, P.v);
-    o += '<path d="'+sdd+'" fill-rule="evenodd" fill="#3e606f" clip-path="url(#sdc)"/>\n';
-
-    // Pin — baked position
-    var pp = rotPt(driveX + P.a, driveY, driveX, driveY, pinStartDeg + spinAngle);
-    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+pinRadius+'" fill="#3e606f"/>\n';
-
-    // Wheel compound path — bake wheelRot into all sub-paths
-    var wd = circlePath(wheelX, wheelY, P.b);
-    for (var i = 0; i < P.n; i++) {
-      var slotDeg = i * (360 / P.n) + wheelRot;
-      wd += pillPath(wheelX + P.b - P.s - P.w/2, wheelY - P.w/2, P.s + 2*P.w, P.w, slotDeg, wheelX, wheelY);
-      var cc = rotPt(wheelX + P.c, wheelY, wheelX, wheelY, slotDeg + 180/P.n);
-      wd += circlePath(cc.x, cc.y, P.y);
-    }
-    o += '<path d="'+wd+'" fill-rule="evenodd" fill="#91aa9d" clip-path="url(#wc)"/>\n';
-
-    o += '</svg>';
-    return o;
   }
 
   // Download SVG
