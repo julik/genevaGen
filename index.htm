@@ -74,6 +74,13 @@ svg { background: #fcfff5; border: 1px solid #999; }
   <label><input type="checkbox" id="dimsCheck"> Show Dimensions</label>
   <br>
   <button id="downloadBtn">Download SVG</button>
+
+  <hr>
+  <label>Shape CSS</label>
+  <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">.driver_wheel_outside { fill: none; stroke: black; stroke-width: 0.05; }
+.driver_wheel_inside { fill: none; stroke: black; stroke-width: 0.05; }
+.driver_pin { fill: none; stroke: black; stroke-width: 0.05; }
+.geneva_wheel { fill: white; stroke: black; stroke-width: 0.05; }</textarea>
 </div>
 
 <svg id="genevaDrive" width="500" height="350"></svg>
@@ -99,6 +106,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
   var tInput = document.getElementById('t_input');
   var animateCheck = document.getElementById('animateCheck');
   var dimsCheck = document.getElementById('dimsCheck');
+  var shapeCss = document.getElementById('shapeCss');
   var svg = document.getElementById('genevaDrive');
 
   var spinAngle = 0;
@@ -188,9 +196,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
       wheel = next;
     }
 
-    // Stop disc: outer circle minus clearance hole
-    var disc = new paper.Path.Circle(new Pt(driveX, driveY), P.z);
-    var clearance = new paper.Path.Circle(new Pt(driveX - P.z, driveY - P.v), P.v);
+    // Stop disc: use y (same as cutout radius) so outlines align
+    var disc = new paper.Path.Circle(new Pt(driveX, driveY), P.y);
+    var clearance = new paper.Path.Circle(new Pt(driveX - P.y, driveY - P.v), P.v);
     var discResult = disc.subtract(clearance);
     disc.remove(); clearance.remove();
 
@@ -249,18 +257,22 @@ svg { background: #fcfff5; border: 1px solid #999; }
       ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
       : (360 / P.n) / 2;
 
+    // Inject shape CSS into SVG
+    var styleEl = el('style', {}, svg);
+    styleEl.textContent = shapeCss.value;
+
     // Drive assembly (rotated group)
     var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')'}, svg);
-    el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, fill: '#193441'}, driveG);
-    el('path', {d: S.discPath, fill: '#3e606f'}, driveG);
+    el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, class: 'driver_wheel_outside'}, driveG);
+    el('path', {d: S.discPath, class: 'driver_wheel_inside'}, driveG);
     el('circle', {
-      cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, fill: '#3e606f',
+      cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, class: 'driver_pin',
       transform: 'rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')'
     }, driveG);
 
     // Wheel (rotated group)
     var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')'}, svg);
-    el('path', {d: S.wheelPath, fill: '#91aa9d'}, wheelG);
+    el('path', {d: S.wheelPath, class: 'geneva_wheel'}, wheelG);
 
     // Dimensions
     if (dimsCheck.checked) {
@@ -350,10 +362,11 @@ svg { background: #fcfff5; border: 1px solid #999; }
     o += '<?xml version="1.0" encoding="UTF-8"?>\n';
     o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
     o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
-    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" fill="#193441"/>\n';
-    o += '<path d="'+exportDiscPath+'" fill="#3e606f"/>\n';
-    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" fill="#3e606f"/>\n';
-    o += '<path d="'+exportWheelPath+'" fill="#91aa9d"/>\n';
+    o += '<style>\n' + shapeCss.value + '\n</style>\n';
+    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="driver_wheel_outside"/>\n';
+    o += '<path d="'+exportDiscPath+'" class="driver_wheel_inside"/>\n';
+    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" class="driver_pin"/>\n';
+    o += '<path d="'+exportWheelPath+'" class="geneva_wheel"/>\n';
     o += '</svg>';
     return o;
   }
@@ -367,6 +380,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   [nInput, pInput, tInput, aInput, bInput].forEach(function(el) {
     el.addEventListener('input', onInputChange);
+    el.addEventListener('change', onInputChange);
   });
   primaryRadios.forEach(function(r) {
     r.addEventListener('change', function() {
@@ -375,6 +389,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     });
   });
   dimsCheck.addEventListener('change', render);
+  shapeCss.addEventListener('input', render);
 
   // Animation — only updates transforms, shapes stay cached
   animateCheck.addEventListener('change', function() {
