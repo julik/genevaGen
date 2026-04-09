@@ -64,9 +64,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
   <div class="variableDef"><span class="name">c</span><span class="desc">center distance</span><span class="value" id="c_val"></span></div>
   <div class="variableDef"><span class="name">s</span><span class="desc">slot center length</span><span class="value" id="s_val"></span></div>
   <div class="variableDef"><span class="name">w</span><span class="desc">slot width</span><span class="value" id="w_val"></span></div>
-  <div class="variableDef"><span class="name">y</span><span class="desc">stop arc radius</span><span class="value" id="y_val"></span></div>
-  <div class="variableDef"><span class="name">z</span><span class="desc">stop disc radius</span><span class="value" id="z_val"></span></div>
-  <div class="variableDef"><span class="name">v</span><span class="desc">clearance arc</span><span class="value" id="v_val"></span></div>
+  <div class="variableDef"><span class="name">y</span><span class="desc">lock disc radius</span><span class="value" id="y_val"></span></div>
+  <div class="variableDef"><span class="name">z</span><span class="desc">lock disc radius (with clearance)</span><span class="value" id="z_val"></span></div>
+  <div class="variableDef"><span class="name">v</span><span class="desc">clearance arc radius</span><span class="value" id="v_val"></span></div>
 
   <hr>
 
@@ -77,9 +77,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   <hr>
   <label>Shape CSS</label>
-  <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">.driver_wheel_outside { fill: none; stroke: black; stroke-width: 0.05; }
-.driver_wheel_inside { fill: none; stroke: black; stroke-width: 0.05; }
-.driver_pin { fill: none; stroke: black; stroke-width: 0.05; }
+  <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">.drive_wheel { fill: none; stroke: black; stroke-width: 0.05; }
+.lock_disc { fill: none; stroke: black; stroke-width: 0.05; }
+.drive_pin { fill: none; stroke: black; stroke-width: 0.05; }
 .geneva_wheel { fill: white; stroke: black; stroke-width: 0.05; }</textarea>
 </div>
 
@@ -163,6 +163,21 @@ svg { background: #fcfff5; border: 1px solid #999; }
     document.getElementById('v_val').textContent = fmt(P.v);
   }
 
+  // Lock disc path from two-circle intersection (true SVG arcs, no bezier)
+  function buildLockDiscPath(cx1, cy1, R, cx2, cy2, r) {
+    var dx = cx2 - cx1, dy = cy2 - cy1;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    var a = (R * R - r * r + d * d) / (2 * d);
+    var h = Math.sqrt(R * R - a * a);
+    var mx = cx1 + a * dx / d, my = cy1 + a * dy / d;
+    var ix1 = mx + h * dy / d, iy1 = my - h * dx / d;
+    var ix2 = mx - h * dy / d, iy2 = my + h * dx / d;
+    // Outer circle: large arc (main body), then clearance circle: small arc (notch)
+    return 'M' + ix1 + ' ' + iy1 +
+      'A' + R + ' ' + R + ' 0 1 1 ' + ix2 + ' ' + iy2 +
+      'A' + r + ' ' + r + ' 0 0 0 ' + ix1 + ' ' + iy1 + 'Z';
+  }
+
   // ---- Shape generator (uses Paper.js) ----
 
   function generateShapes(P) {
@@ -196,15 +211,12 @@ svg { background: #fcfff5; border: 1px solid #999; }
       wheel = next;
     }
 
-    // Stop disc: use y (same as cutout radius) so outlines align
-    var disc = new paper.Path.Circle(new Pt(driveX, driveY), P.y);
-    var clearance = new paper.Path.Circle(new Pt(driveX - P.y, driveY - P.v), P.v);
-    var discResult = disc.subtract(clearance);
-    disc.remove(); clearance.remove();
+    // Lock disc: true SVG arcs (not bezier) so radius matches cutout arcs exactly
+    var lockDiscPath = buildLockDiscPath(driveX, driveY, P.y, driveX - P.y, driveY - P.v, P.v);
 
     var result = {
       wheelPath: wheel.pathData,
-      discPath: discResult.pathData,
+      lockDiscPath: lockDiscPath,
       driveX: driveX, driveY: driveY,
       wheelX: wheelX, wheelY: wheelY,
       driveRadius: P.a + P.p,
@@ -213,7 +225,6 @@ svg { background: #fcfff5; border: 1px solid #999; }
     };
 
     wheel.remove();
-    discResult.remove();
     return result;
   }
 
@@ -263,10 +274,10 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
     // Drive assembly (rotated group)
     var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')'}, svg);
-    el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, class: 'driver_wheel_outside'}, driveG);
-    el('path', {d: S.discPath, class: 'driver_wheel_inside'}, driveG);
+    el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, class: 'drive_wheel'}, driveG);
+    el('path', {d: S.lockDiscPath, class: 'lock_disc'}, driveG);
     el('circle', {
-      cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, class: 'driver_pin',
+      cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, class: 'drive_pin',
       transform: 'rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')'
     }, driveG);
 
@@ -345,16 +356,15 @@ svg { background: #fcfff5; border: 1px solid #999; }
       ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
       : (360 / P.n) / 2;
 
-    // Bake rotations into path data via Paper.js
+    // Bake wheel rotation into path data via Paper.js
     var wheelItem = new paper.CompoundPath(S.wheelPath);
     wheelItem.rotate(wheelRot, new paper.Point(S.wheelX, S.wheelY));
     var exportWheelPath = wheelItem.pathData;
     wheelItem.remove();
 
-    var discItem = new paper.CompoundPath(S.discPath);
-    discItem.rotate(spinAngle, new paper.Point(S.driveX, S.driveY));
-    var exportDiscPath = discItem.pathData;
-    discItem.remove();
+    // Lock disc: rebuild with baked spinAngle (true arcs, not bezier)
+    var lc1 = rotPt(S.driveX - P.y, S.driveY - P.v, S.driveX, S.driveY, spinAngle);
+    var exportLockDiscPath = buildLockDiscPath(S.driveX, S.driveY, P.y, lc1.x, lc1.y, P.v);
 
     var pp = rotPt(S.driveX + P.a, S.driveY, S.driveX, S.driveY, S.pinStartDeg + spinAngle);
 
@@ -363,9 +373,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
     o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
     o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
     o += '<style>\n' + shapeCss.value + '\n</style>\n';
-    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="driver_wheel_outside"/>\n';
-    o += '<path d="'+exportDiscPath+'" class="driver_wheel_inside"/>\n';
-    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" class="driver_pin"/>\n';
+    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
+    o += '<path d="'+exportLockDiscPath+'" class="lock_disc"/>\n';
+    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" class="drive_pin"/>\n';
     o += '<path d="'+exportWheelPath+'" class="geneva_wheel"/>\n';
     o += '</svg>';
     return o;
