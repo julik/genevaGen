@@ -72,8 +72,15 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   <label><input type="checkbox" id="animateCheck"> Animate</label>
   <label><input type="checkbox" id="dimsCheck"> Show Dimensions</label>
-  <br>
+  <div class="variableDef">
+    <label>
+      <span class="name">v</span>
+      <span class="desc">rotation speed (deg/s)</span>
+    </label>
+    <input type="number" id="speed_input" value="30" step="1" min="-720" max="720">
+  </div>
   <button id="copyBtn">Copy SVG</button>
+  <button id="copyAnimBtn">Copy Animated SVG</button>
   <span id="copyStatus" style="margin-left:6px;color:#666;font-size:0.9em;"></span>
 
   <hr>
@@ -86,6 +93,28 @@ svg { background: #fcfff5; border: 1px solid #999; }
 </div>
 
 <svg id="genevaDrive" width="500" height="350"></svg>
+
+<script type="application/x-js-template" id="embedTpl">
+(function() {
+  var C = __CFG__;
+  var svg = document.currentScript.previousElementSibling;
+  var drive = svg.querySelector('.drive_group');
+  var wheel = svg.querySelector('.wheel_group');
+  var spin = 0, last = null;
+  function tick(now) {
+    if (last !== null) spin = (spin + (now - last) * C.dps / 1000) % 360;
+    last = now;
+    drive.setAttribute('transform', 'rotate(' + spin + ' ' + C.dx + ' ' + C.dy + ')');
+    var pr = (C.psd + spin) * Math.PI / 180;
+    var px = C.dx + C.a * Math.cos(pr), py = C.dy + C.a * Math.sin(pr);
+    var dx = px - C.wx, dy = py - C.wy;
+    var wr = (dx * dx + dy * dy <= C.b2) ? Math.atan2(dy, dx) * 180 / Math.PI : C.rest;
+    wheel.setAttribute('transform', 'rotate(' + wr + ' ' + C.wx + ' ' + C.wy + ')');
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.18/paper-core.min.js"></script>
 <script>
@@ -367,8 +396,13 @@ svg { background: #fcfff5; border: 1px solid #999; }
   }
 
   // ---- Export: shapes in canonical pose, wheel rotations applied via <g transform> ----
+  //
+  // Static export: standalone SVG document (XML declaration + <svg>).
+  // Animated export: HTML snippet (<svg> + <script>) — paste into any page.
+  // Embed script comes from the #embedTpl template tag, with __CFG__ substituted at copy time.
 
-  function buildExportSVG() {
+  function buildExport(opts) {
+    opts = opts || {};
     var P = calc();
     if (!cachedShapes) cachedShapes = generateShapes(P);
     var S = cachedShapes;
@@ -377,36 +411,57 @@ svg { background: #fcfff5; border: 1px solid #999; }
     var miny = S.wheelY - 1.1 * Math.max(P.a, P.b);
     var vw = P.c + 1.1 * S.driveRadius + 1.1 * P.b;
     var vh = Math.max(P.a, P.b) * 2 * 1.1;
+    var rest = (360 / P.n) / 2;
 
-    var pinRad = (S.pinStartDeg + spinAngle) * PI / 180;
-    var pinX = S.driveX + P.a * Math.cos(pinRad);
-    var pinY = S.driveY + P.a * Math.sin(pinRad);
-    var pinDist2 = dist(S.wheelX, S.wheelY, pinX, pinY);
-    var wheelRot = pinDist2 <= P.b
-      ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
-      : (360 / P.n) / 2;
+    var startSpin, startWheelRot;
+    if (opts.animate) {
+      startSpin = 0;
+      startWheelRot = rest;
+    } else {
+      var pinRad = (S.pinStartDeg + spinAngle) * PI / 180;
+      var pinX = S.driveX + P.a * Math.cos(pinRad);
+      var pinY = S.driveY + P.a * Math.sin(pinRad);
+      var pinDist2 = dist(S.wheelX, S.wheelY, pinX, pinY);
+      startSpin = spinAngle;
+      startWheelRot = pinDist2 <= P.b
+        ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
+        : rest;
+    }
 
     var anchorSize = P.p;
     var driveAnchor = anchorPath(S.driveX, S.driveY, anchorSize);
     var wheelAnchor = anchorPath(S.wheelX, S.wheelY, anchorSize);
 
-    var o = '';
-    o += '<?xml version="1.0" encoding="UTF-8"?>\n';
-    o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
-    o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
-    o += '<style>\n' + shapeCss.value + '\n</style>\n';
-    o += '<g transform="rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')">\n';
-    o += '  <circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
-    o += '  <path d="'+S.lockDiscPath+'" class="lock_disc"/>\n';
-    o += '  <circle cx="'+(S.driveX + P.a)+'" cy="'+S.driveY+'" r="'+S.pinRadius+'" class="drive_pin" transform="rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')"/>\n';
-    o += '  <path d="'+driveAnchor+'" class="anchor"/>\n';
-    o += '</g>\n';
-    o += '<g transform="rotate(' + wheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')">\n';
-    o += '  <path d="'+S.wheelPath+'" class="geneva_wheel"/>\n';
-    o += '  <path d="'+wheelAnchor+'" class="anchor"/>\n';
-    o += '</g>\n';
-    o += '</svg>';
-    return o;
+    var svg = '';
+    svg += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
+    svg += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
+    svg += '<style>\n' + shapeCss.value + '\n</style>\n';
+    svg += '<g class="drive_group" transform="rotate(' + startSpin + ' ' + S.driveX + ' ' + S.driveY + ')">\n';
+    svg += '  <circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
+    svg += '  <path d="'+S.lockDiscPath+'" class="lock_disc"/>\n';
+    svg += '  <circle cx="'+(S.driveX + P.a)+'" cy="'+S.driveY+'" r="'+S.pinRadius+'" class="drive_pin" transform="rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')"/>\n';
+    svg += '  <path d="'+driveAnchor+'" class="anchor"/>\n';
+    svg += '</g>\n';
+    svg += '<g class="wheel_group" transform="rotate(' + startWheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')">\n';
+    svg += '  <path d="'+S.wheelPath+'" class="geneva_wheel"/>\n';
+    svg += '  <path d="'+wheelAnchor+'" class="anchor"/>\n';
+    svg += '</g>\n';
+    svg += '</svg>';
+
+    if (!opts.animate) return '<?xml version="1.0" encoding="UTF-8"?>\n' + svg;
+
+    var cfg = {
+      dps: opts.speed,
+      a: P.a, b2: P.b * P.b,
+      dx: S.driveX, dy: S.driveY,
+      wx: S.wheelX, wy: S.wheelY,
+      psd: S.pinStartDeg,
+      rest: rest
+    };
+    var tpl = document.getElementById('embedTpl').textContent;
+    var script = tpl.replace('__CFG__', JSON.stringify(cfg));
+    // \/ escaping prevents the HTML parser from closing the enclosing <script> tag here
+    return svg + '\n<script>' + script + '<\/script>\n';
   }
 
   // ---- Event wiring ----
@@ -450,14 +505,23 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   // Copy SVG to clipboard
   var copyStatus = document.getElementById('copyStatus');
-  document.getElementById('copyBtn').addEventListener('click', function() {
-    var source = buildExportSVG();
+  var speedInput = document.getElementById('speed_input');
+
+  function copyToClipboard(source) {
     navigator.clipboard.writeText(source).then(function() {
       copyStatus.textContent = 'Copied';
     }, function(err) {
       copyStatus.textContent = 'Failed: ' + err.message;
     });
     setTimeout(function() { copyStatus.textContent = ''; }, 2000);
+  }
+
+  document.getElementById('copyBtn').addEventListener('click', function() {
+    copyToClipboard(buildExport());
+  });
+  document.getElementById('copyAnimBtn').addEventListener('click', function() {
+    var speed = parseFloat(speedInput.value) || 0;
+    copyToClipboard(buildExport({animate: true, speed: speed}));
   });
 
   // Initial render
