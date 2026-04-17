@@ -270,12 +270,6 @@ svg { background: #fcfff5; border: 1px solid #999; }
     return 'M ' + (cx - size) + ' ' + cy + ' L ' + cx + ' ' + cy + ' L ' + cx + ' ' + (cy + size);
   }
 
-  function anchorPathRotated(cx, cy, size, deg) {
-    var a = rotPt(cx - size, cy, cx, cy, deg);
-    var b = rotPt(cx, cy + size, cx, cy, deg);
-    return 'M ' + a.x + ' ' + a.y + ' L ' + cx + ' ' + cy + ' L ' + b.x + ' ' + b.y;
-  }
-
   function render() {
     var P = calc();
     updateDisplayValues(P);
@@ -372,7 +366,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     t.textContent = text;
   }
 
-  // ---- Export (uses Paper.js to bake transforms into path coords) ----
+  // ---- Export: shapes in canonical pose, wheel rotations applied via <g transform> ----
 
   function buildExportSVG() {
     var P = calc();
@@ -392,33 +386,25 @@ svg { background: #fcfff5; border: 1px solid #999; }
       ? Math.atan2(pinY - S.wheelY, pinX - S.wheelX) * 180 / PI
       : (360 / P.n) / 2;
 
-    // Bake wheel rotation into path data via Paper.js
-    var wheelItem = new paper.CompoundPath(S.wheelPath);
-    wheelItem.rotate(wheelRot, new paper.Point(S.wheelX, S.wheelY));
-    var exportWheelPath = wheelItem.pathData;
-    wheelItem.remove();
-
-    // Lock disc: rebuild with baked spinAngle (true arcs, not bezier)
-    var lc1 = rotPt(S.driveX - P.z, S.driveY - P.v, S.driveX, S.driveY, spinAngle);
-    var exportLockDiscPath = buildLockDiscPath(S.driveX, S.driveY, P.y, lc1.x, lc1.y, P.v);
-
-    var pp = rotPt(S.driveX + P.a, S.driveY, S.driveX, S.driveY, S.pinStartDeg + spinAngle);
-
     var anchorSize = P.p;
-    var driveAnchor = anchorPathRotated(S.driveX, S.driveY, anchorSize, spinAngle);
-    var wheelAnchor = anchorPathRotated(S.wheelX, S.wheelY, anchorSize, wheelRot);
+    var driveAnchor = anchorPath(S.driveX, S.driveY, anchorSize);
+    var wheelAnchor = anchorPath(S.wheelX, S.wheelY, anchorSize);
 
     var o = '';
     o += '<?xml version="1.0" encoding="UTF-8"?>\n';
     o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
     o += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
     o += '<style>\n' + shapeCss.value + '\n</style>\n';
-    o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
-    o += '<path d="'+exportLockDiscPath+'" class="lock_disc"/>\n';
-    o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" class="drive_pin"/>\n';
-    o += '<path d="'+driveAnchor+'" class="anchor"/>\n';
-    o += '<path d="'+exportWheelPath+'" class="geneva_wheel"/>\n';
-    o += '<path d="'+wheelAnchor+'" class="anchor"/>\n';
+    o += '<g transform="rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')">\n';
+    o += '  <circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
+    o += '  <path d="'+S.lockDiscPath+'" class="lock_disc"/>\n';
+    o += '  <circle cx="'+(S.driveX + P.a)+'" cy="'+S.driveY+'" r="'+S.pinRadius+'" class="drive_pin" transform="rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')"/>\n';
+    o += '  <path d="'+driveAnchor+'" class="anchor"/>\n';
+    o += '</g>\n';
+    o += '<g transform="rotate(' + wheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')">\n';
+    o += '  <path d="'+S.wheelPath+'" class="geneva_wheel"/>\n';
+    o += '  <path d="'+wheelAnchor+'" class="anchor"/>\n';
+    o += '</g>\n';
     o += '</svg>';
     return o;
   }
