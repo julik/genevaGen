@@ -80,7 +80,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
   <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">.drive_wheel { fill: none; stroke: black; stroke-width: 0.05; }
 .lock_disc { fill: none; stroke: black; stroke-width: 0.05; }
 .drive_pin { fill: none; stroke: black; stroke-width: 0.05; }
-.geneva_wheel { fill: white; stroke: black; stroke-width: 0.05; }</textarea>
+.geneva_wheel { fill: white; stroke: black; stroke-width: 0.05; }
+.anchor { fill: none; stroke: none; }</textarea>
 </div>
 
 <svg id="genevaDrive" width="500" height="350"></svg>
@@ -263,6 +264,17 @@ svg { background: #fcfff5; border: 1px solid #999; }
     return { x: cx + dx*Math.cos(r) - dy*Math.sin(r), y: cy + dx*Math.sin(r) + dy*Math.cos(r) };
   }
 
+  // Anchor marker: two perpendicular strokes forming an L with the corner at (cx, cy)
+  function anchorPath(cx, cy, size) {
+    return 'M ' + (cx - size) + ' ' + cy + ' L ' + cx + ' ' + cy + ' L ' + cx + ' ' + (cy + size);
+  }
+
+  function anchorPathRotated(cx, cy, size, deg) {
+    var a = rotPt(cx - size, cy, cx, cy, deg);
+    var b = rotPt(cx, cy + size, cx, cy, deg);
+    return 'M ' + a.x + ' ' + a.y + ' L ' + cx + ' ' + cy + ' L ' + b.x + ' ' + b.y;
+  }
+
   function render() {
     var P = calc();
     updateDisplayValues(P);
@@ -291,6 +303,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
     var styleEl = el('style', {}, svg);
     styleEl.textContent = shapeCss.value;
 
+    var anchorSize = P.p;
+
     // Drive assembly (rotated group)
     var driveG = el('g', {transform: 'rotate(' + spinAngle + ' ' + S.driveX + ' ' + S.driveY + ')'}, svg);
     el('circle', {cx: S.driveX, cy: S.driveY, r: S.driveRadius, class: 'drive_wheel'}, driveG);
@@ -299,10 +313,12 @@ svg { background: #fcfff5; border: 1px solid #999; }
       cx: S.driveX + P.a, cy: S.driveY, r: S.pinRadius, class: 'drive_pin',
       transform: 'rotate(' + S.pinStartDeg + ' ' + S.driveX + ' ' + S.driveY + ')'
     }, driveG);
+    el('path', {d: anchorPath(S.driveX, S.driveY, anchorSize), class: 'anchor'}, driveG);
 
     // Wheel (rotated group)
     var wheelG = el('g', {transform: 'rotate(' + wheelRot + ' ' + S.wheelX + ' ' + S.wheelY + ')'}, svg);
     el('path', {d: S.wheelPath, class: 'geneva_wheel'}, wheelG);
+    el('path', {d: anchorPath(S.wheelX, S.wheelY, anchorSize), class: 'anchor'}, wheelG);
 
     // Dimensions
     if (dimsCheck.checked) {
@@ -387,6 +403,10 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
     var pp = rotPt(S.driveX + P.a, S.driveY, S.driveX, S.driveY, S.pinStartDeg + spinAngle);
 
+    var anchorSize = P.p;
+    var driveAnchor = anchorPathRotated(S.driveX, S.driveY, anchorSize, spinAngle);
+    var wheelAnchor = anchorPathRotated(S.wheelX, S.wheelY, anchorSize, wheelRot);
+
     var o = '';
     o += '<?xml version="1.0" encoding="UTF-8"?>\n';
     o += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
@@ -395,7 +415,9 @@ svg { background: #fcfff5; border: 1px solid #999; }
     o += '<circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
     o += '<path d="'+exportLockDiscPath+'" class="lock_disc"/>\n';
     o += '<circle cx="'+pp.x+'" cy="'+pp.y+'" r="'+S.pinRadius+'" class="drive_pin"/>\n';
+    o += '<path d="'+driveAnchor+'" class="anchor"/>\n';
     o += '<path d="'+exportWheelPath+'" class="geneva_wheel"/>\n';
+    o += '<path d="'+wheelAnchor+'" class="anchor"/>\n';
     o += '</svg>';
     return o;
   }
