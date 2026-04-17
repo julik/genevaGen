@@ -73,7 +73,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
   <label><input type="checkbox" id="animateCheck"> Animate</label>
   <label><input type="checkbox" id="dimsCheck"> Show Dimensions</label>
   <br>
-  <button id="downloadBtn">Download SVG</button>
+  <button id="copyBtn">Copy SVG</button>
+  <span id="copyStatus" style="margin-left:6px;color:#666;font-size:0.9em;"></span>
 
   <hr>
   <label>Shape CSS</label>
@@ -461,16 +462,16 @@ svg { background: #fcfff5; border: 1px solid #999; }
     animFrame = requestAnimationFrame(animate);
   }
 
-  // Download SVG
-  document.getElementById('downloadBtn').addEventListener('click', function() {
+  // Copy SVG to clipboard
+  var copyStatus = document.getElementById('copyStatus');
+  document.getElementById('copyBtn').addEventListener('click', function() {
     var source = buildExportSVG();
-    var blob = new Blob([source], {type: 'image/svg+xml'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'geneva-drive.svg';
-    a.click();
-    URL.revokeObjectURL(url);
+    navigator.clipboard.writeText(source).then(function() {
+      copyStatus.textContent = 'Copied';
+    }, function(err) {
+      copyStatus.textContent = 'Failed: ' + err.message;
+    });
+    setTimeout(function() { copyStatus.textContent = ''; }, 2000);
   });
 
   // Initial render
