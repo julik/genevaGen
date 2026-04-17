@@ -163,19 +163,38 @@ svg { background: #fcfff5; border: 1px solid #999; }
     document.getElementById('v_val').textContent = fmt(P.v);
   }
 
-  // Lock disc path from two-circle intersection (true SVG arcs, no bezier)
+  // Lock disc path: main disc minus clearance circle, built from true SVG arcs
   function buildLockDiscPath(cx1, cy1, R, cx2, cy2, r) {
     var dx = cx2 - cx1, dy = cy2 - cy1;
     var d = Math.sqrt(dx * dx + dy * dy);
-    var a = (R * R - r * r + d * d) / (2 * d);
-    var h = Math.sqrt(R * R - a * a);
-    var mx = cx1 + a * dx / d, my = cy1 + a * dy / d;
+    var aa = (R * R - r * r + d * d) / (2 * d);
+    var h = Math.sqrt(R * R - aa * aa);
+    var mx = cx1 + aa * dx / d, my = cy1 + aa * dy / d;
     var ix1 = mx + h * dy / d, iy1 = my - h * dx / d;
     var ix2 = mx - h * dy / d, iy2 = my + h * dx / d;
-    // Outer circle: large arc (main body), then clearance circle: small arc (notch)
+    // Main arc: from ix1 to ix2 passing through the point on main farthest from clearance
+    var farX = cx1 - R * dx / d, farY = cy1 - R * dy / d;
+    var mf = arcFlags(cx1, cy1, ix1, iy1, ix2, iy2, farX, farY);
+    // Clearance arc: from ix2 to ix1 passing through the point on clearance closest to main
+    var nearX = cx2 - r * dx / d, nearY = cy2 - r * dy / d;
+    var cf = arcFlags(cx2, cy2, ix2, iy2, ix1, iy1, nearX, nearY);
     return 'M' + ix1 + ' ' + iy1 +
-      'A' + R + ' ' + R + ' 0 1 1 ' + ix2 + ' ' + iy2 +
-      'A' + r + ' ' + r + ' 0 0 0 ' + ix1 + ' ' + iy1 + 'Z';
+      ' A ' + R + ' ' + R + ' 0 ' + mf.large + ' ' + mf.sweep + ' ' + ix2 + ' ' + iy2 +
+      ' A ' + r + ' ' + r + ' 0 ' + cf.large + ' ' + cf.sweep + ' ' + ix1 + ' ' + iy1 + ' Z';
+  }
+
+  // Pick SVG arc flags so the arc from p1 to p2 on circle (cx,cy,*) passes through a given direction
+  function arcFlags(cx, cy, p1x, p1y, p2x, p2y, throughX, throughY) {
+    var TWOPI = 2 * PI;
+    var norm = function(a) { a = a % TWOPI; return a < 0 ? a + TWOPI : a; };
+    var t1 = Math.atan2(p1y - cy, p1x - cx);
+    var t2 = Math.atan2(p2y - cy, p2x - cx);
+    var tT = Math.atan2(throughY - cy, throughX - cx);
+    var cw = norm(t2 - t1);
+    var cwT = norm(tT - t1);
+    var sweep = (cwT > 0 && cwT < cw) ? 1 : 0;
+    var extent = sweep ? cw : TWOPI - cw;
+    return { large: extent > PI ? 1 : 0, sweep: sweep };
   }
 
   // ---- Shape generator (uses Paper.js) ----
@@ -211,8 +230,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
       wheel = next;
     }
 
-    // Lock disc: true SVG arcs (not bezier) so radius matches cutout arcs exactly
-    var lockDiscPath = buildLockDiscPath(driveX, driveY, P.y, driveX - P.y, driveY - P.v, P.v);
+    // Lock disc: concentric with drive wheel, clearance arc per classic geometry (z-v triangle)
+    var lockDiscPath = buildLockDiscPath(driveX, driveY, P.y, driveX - P.z, driveY - P.v, P.v);
 
     var result = {
       wheelPath: wheel.pathData,
@@ -363,7 +382,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     wheelItem.remove();
 
     // Lock disc: rebuild with baked spinAngle (true arcs, not bezier)
-    var lc1 = rotPt(S.driveX - P.y, S.driveY - P.v, S.driveX, S.driveY, spinAngle);
+    var lc1 = rotPt(S.driveX - P.z, S.driveY - P.v, S.driveX, S.driveY, spinAngle);
     var exportLockDiscPath = buildLockDiscPath(S.driveX, S.driveY, P.y, lc1.x, lc1.y, P.v);
 
     var pp = rotPt(S.driveX + P.a, S.driveY, S.driveX, S.driveY, S.pinStartDeg + spinAngle);
