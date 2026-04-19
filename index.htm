@@ -58,6 +58,14 @@ svg { background: #fcfff5; border: 1px solid #999; }
     </label>
     <input type="number" id="t_input" value="0.05" step="0.01" min="0.0" max="10.0">
   </div>
+  <div class="variableDef">
+    <label>
+      <span class="name">h</span>
+      <span class="desc">center hole radius</span>
+    </label>
+    <input type="range" id="h_input" value="0.77" step="0.01" min="0" max="2">
+    <span class="value" id="h_display"></span>
+  </div>
 
   <hr>
 
@@ -85,7 +93,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
 
   <hr>
   <label>Shape CSS</label>
-  <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">.drive_wheel { fill: none; stroke: black; stroke-width: 0.05; }
+  <textarea id="shapeCss" rows="10" style="width:100%;font-family:monospace;font-size:12px;tab-size:2">svg { background: #fcfff5; }
+.drive_wheel { fill: none; stroke: black; stroke-width: 0.05; }
 .lock_disc { fill: none; stroke: black; stroke-width: 0.05; }
 .drive_pin { fill: none; stroke: black; stroke-width: 0.05; }
 .geneva_wheel { fill: white; stroke: black; stroke-width: 0.05; }
@@ -135,6 +144,8 @@ svg { background: #fcfff5; border: 1px solid #999; }
   var nInput = document.getElementById('n_input');
   var pInput = document.getElementById('p_input');
   var tInput = document.getElementById('t_input');
+  var hInput = document.getElementById('h_input');
+  var hDisplay = document.getElementById('h_display');
   var animateCheck = document.getElementById('animateCheck');
   var dimsCheck = document.getElementById('dimsCheck');
   var shapeCss = document.getElementById('shapeCss');
@@ -154,6 +165,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     var n = parseFloat(nInput.value) || 6;
     var p = parseFloat(pInput.value) || 0.25;
     var t = parseFloat(tInput.value) || 0.05;
+    var h = parseFloat(hInput.value) || 0;
     var a, b, c;
 
     if (primary === 'b') {
@@ -172,7 +184,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     var z = y - t;
     var v = (b * z) / a;
 
-    return { a:a, b:b, c:c, n:n, p:p, t:t, s:s, w:w, y:y, z:z, v:v };
+    return { a:a, b:b, c:c, n:n, p:p, t:t, h:h, s:s, w:w, y:y, z:z, v:v };
   }
 
   function updateInputVisibility() {
@@ -186,6 +198,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
   function updateDisplayValues(P) {
     aDisplay.textContent = fmt(P.a);
     bDisplay.textContent = fmt(P.b);
+    hDisplay.textContent = fmt(P.h);
     document.getElementById('c_val').textContent = fmt(P.c);
     document.getElementById('s_val').textContent = fmt(P.s);
     document.getElementById('w_val').textContent = fmt(P.w);
@@ -261,6 +274,14 @@ svg { background: #fcfff5; border: 1px solid #999; }
       wheel = next;
     }
 
+    // Center hole
+    if (P.h > 0) {
+      var centerHole = new paper.Path.Circle(new Pt(wheelX, wheelY), P.h);
+      var centered = wheel.subtract(centerHole);
+      wheel.remove(); centerHole.remove();
+      wheel = centered;
+    }
+
     // Lock disc: concentric with drive wheel, clearance arc per classic geometry (z-v triangle)
     var lockDiscPath = buildLockDiscPath(driveX, driveY, P.y, driveX - P.z, driveY - P.v, P.v);
 
@@ -297,6 +318,20 @@ svg { background: #fcfff5; border: 1px solid #999; }
   // Anchor marker: two perpendicular strokes forming an L with the corner at (cx, cy)
   function anchorPath(cx, cy, size) {
     return 'M ' + (cx - size) + ' ' + cy + ' L ' + cx + ' ' + cy + ' L ' + cx + ' ' + (cy + size);
+  }
+
+  // Prefix every selector with `.scope` so two embeds on the same page don't collide.
+  // The bare `svg` selector maps to the scope class itself (root), not a descendant.
+  function scopeCss(css, scope) {
+    return css.replace(/([^{}]+)\{([^{}]*)\}/g, function(_, selList, body) {
+      var prefixed = selList.split(',').map(function(s) {
+        s = s.trim();
+        if (!s) return s;
+        if (s === 'svg') return '.' + scope;
+        return '.' + scope + ' ' + s;
+      }).join(', ');
+      return prefixed + ' {' + body + '}';
+    });
   }
 
   function render() {
@@ -432,10 +467,11 @@ svg { background: #fcfff5; border: 1px solid #999; }
     var driveAnchor = anchorPath(S.driveX, S.driveY, anchorSize);
     var wheelAnchor = anchorPath(S.wheelX, S.wheelY, anchorSize);
 
+    var scope = 'geneva-' + Math.random().toString(36).slice(2, 8);
     var svg = '';
-    svg += '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="350" ';
-    svg += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '" style="background:#fcfff5">\n';
-    svg += '<style>\n' + shapeCss.value + '\n</style>\n';
+    svg += '<svg xmlns="http://www.w3.org/2000/svg" class="' + scope + '" width="500" height="350" ';
+    svg += 'viewBox="' + minx + ' ' + miny + ' ' + vw + ' ' + vh + '">\n';
+    svg += '<style>\n' + scopeCss(shapeCss.value, scope) + '\n</style>\n';
     svg += '<g class="drive_group" transform="rotate(' + startSpin + ' ' + S.driveX + ' ' + S.driveY + ')">\n';
     svg += '  <circle cx="'+S.driveX+'" cy="'+S.driveY+'" r="'+S.driveRadius+'" class="drive_wheel"/>\n';
     svg += '  <path d="'+S.lockDiscPath+'" class="lock_disc"/>\n';
@@ -471,7 +507,7 @@ svg { background: #fcfff5; border: 1px solid #999; }
     render();
   }
 
-  [nInput, pInput, tInput, aInput, bInput].forEach(function(el) {
+  [nInput, pInput, tInput, hInput, aInput, bInput].forEach(function(el) {
     el.addEventListener('input', onInputChange);
     el.addEventListener('change', onInputChange);
   });
